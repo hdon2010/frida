@@ -40,7 +40,7 @@ jobs:
         id: setup-ndk
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r25b     # frida 官方 CI 使用的版本
+          ndk-version: r29    # frida 官方 CI 使用的版本
 
       - name: Set up Python
         uses: actions/setup-python@v5
