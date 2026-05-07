@@ -54,12 +54,11 @@ jobs:
           ARCH="${{ github.event.inputs.arch || 'arm64' }}"
           mkdir build-android-${ARCH}
           cd build-android-${ARCH}
-          # -Db_strip=false 保留符号；--buildtype=debugoptimized 保留符号但保持优化
+          # -Dstrip=false 保留符号；--buildtype=debugoptimized 保留符号但保持优化
           ../configure \
             --host=android-${ARCH} \
             -- \
-            --buildtype=debugoptimized \
-            -Db_strip=false
+            -Dstrip=false
 
       - name: Build
         env:
@@ -87,3 +86,4 @@ jobs:
             build-android-*/subprojects/frida-core/server/frida-server
             build-android-*/bin/frida-server
           retention-days: 30
+     
