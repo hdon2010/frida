@@ -1,0 +1,89 @@
+name: Build Android frida-server with symbols
+
+on:
+  workflow_dispatch:          # 手动触发
+    inputs:
+      arch:
+        description: 'Target arch'
+        required: true
+        default: 'arm64'
+        type: choice
+        options:
+          - arm
+          - arm64
+          - x86
+          - x86_64
+  push:
+    tags:
+      - 'v*'                  # 也可在打 tag 时自动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout frida source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive   # 必须拉取所有子模块
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential git ninja-build \
+            gcc-multilib g++-multilib \
+            lib32stdc++-11-dev libc6-dev-i386 \
+            flex bison xz-utils nodejs npm
+
+      - name: Setup Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r25b     # frida 官方 CI 使用的版本
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Configure for Android ${{ github.event.inputs.arch || 'arm64' }}
+        env:
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          ARCH="${{ github.event.inputs.arch || 'arm64' }}"
+          mkdir build-android-${ARCH}
+          cd build-android-${ARCH}
+          # -Db_strip=false 保留符号；--buildtype=debugoptimized 保留符号但保持优化
+          ../configure \
+            --host=android-${ARCH} \
+            -- \
+            --buildtype=debugoptimized \
+            -Db_strip=false
+
+      - name: Build
+        env:
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          ARCH="${{ github.event.inputs.arch || 'arm64' }}"
+          cd build-android-${ARCH}
+          make -j$(nproc)
+
+      - name: Locate frida-server (with symbols)
+        run: |
+          ARCH="${{ github.event.inputs.arch || 'arm64' }}"
+          # 未 strip 的二进制在 build 目录的 bin/ 下
+          find build-android-${ARCH} -name "frida-server" -not -name "*.p" | head -20
+          # 验证是否含符号
+          file build-android-${ARCH}/subprojects/frida-core/server/frida-server || true
+          readelf -S build-android-${ARCH}/subprojects/frida-core/server/frida-server \
+            | grep -i debug | head -5 || true
+
+      - name: Upload frida-server with symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: frida-server-android-${{ github.event.inputs.arch || 'arm64' }}-symbols
+          path: |
+            build-android-*/subprojects/frida-core/server/frida-server
+            build-android-*/bin/frida-server
+          retention-days: 30
